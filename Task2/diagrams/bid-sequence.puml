@@ -1,0 +1,38 @@
+@startuml
+title RTB: путь bid-request (sequence)
+
+skinparam maxMessageSize 200
+
+participant "DSP-партнёр" as DSP
+participant "API Gateway\n(Envoy)" as GW
+participant "Bidding Service" as B
+database "Redis\n(кеш кампаний)" as R
+participant "Delivery Service" as D
+queue "Kafka" as K
+
+DSP -> GW : POST /openrtb/{dspId}/bid\n(bid-request, HMAC)
+activate GW
+GW -> GW : проверка подписи, rate limit
+alt сверх квоты
+    GW --> DSP : 429 Retry-After
+else прошло
+    GW -> B : gRPC Bid(bid-request)\ndeadline 60 мс
+    activate B
+    B -> R : кандидаты, бюджеты, таргетинг
+    R --> B : <1 мс
+    alt кеш жив
+        B -> B : взвешивание ставок,\nпобедитель
+    else кеш недоступен
+        B -> B : in-memory снапшот,\nfloor-ставка
+    end
+    B ->> K : rtb.bid-events (async)
+    B --> GW : bid-response (seatbid)
+    deactivate B
+    GW --> DSP : bid-response
+end
+deactivate GW
+
+DSP ->> D : показ баннера (HTTPS)
+D ->> K : rtb.impressions (async)
+note over K : Billing и Analytics\nчитают события своими\nгруппами потребителей
+@enduml

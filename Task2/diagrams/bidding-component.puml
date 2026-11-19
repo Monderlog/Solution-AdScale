@@ -1,0 +1,49 @@
+@startuml
+title Bidding Service: компоненты и зависимости
+
+skinparam componentStyle rectangle
+
+package "API Gateway (Envoy)" {
+  [Routing /openrtb/{dspId}] as RT
+  [Auth HMAC] as AUTH
+  [Rate limiter (Redis)] as RL
+  [Circuit breaker /\noutlier detection] as CB
+}
+
+package "Bidding Service (Go)" {
+  [OpenRTB Handler] as H
+  [Candidate Matcher] as M
+  [Auction Engine] as A
+  [Bid Assembler] as BA
+  [Campaign Cache\n(in-memory snapshot)] as CACHE
+  [Fallback: floor bids] as FB
+}
+
+database "Redis Cluster" as REDIS
+component "Campaign Service" as CS
+component "Delivery Service" as DEL
+queue "Kafka" as K
+
+RT --> AUTH
+AUTH --> RL
+RL --> CB
+CB --> H
+
+H --> M
+M --> A
+A --> BA
+M --> CACHE : чтение
+CACHE --> REDIS : снапшот
+CS --> K : campaign.changed
+CACHE --> CS : GetActiveCampaigns\n(nearline pull, 30 с)
+K --> CACHE : обновления кеша
+BA --> DEL : PrepareCreative\n(gRPC, breaker)
+BA --> FB : нет ставки\nиз кеша
+BA --> K : rtb.bid-events (async)
+
+note right of CACHE
+  Синхронных вызовов
+  в PostgreSQL в пути
+  запроса нет
+end note
+@enduml

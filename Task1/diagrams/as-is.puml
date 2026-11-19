@@ -1,0 +1,76 @@
+@startuml
+!include C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title C4 Container Diagram: AdScale (AS-IS)\n15 000 RPS (пик), P95 110-120 мс при требовании ≤100 мс, деградации в часы пик
+
+Person(advertiser, "Рекламодатель", "Управляет кампаниями, бюджетами и ставками через личный кабинет")
+Person_Ext(endUser, "Пользователь сайта/приложения", "Просматривает рекламу, кликает по баннерам")
+
+System_Ext(dspPartner, "DSP-партнёр", "Отправляет bid-requests, получает bid-responses по OpenRTB")
+System_Ext(paymentGateway, "Платёжный шлюз", "Обработка пополнения рекламных бюджетов")
+
+System_Boundary(monolith, "AdScale Monolith (C++ / Go / Python / Node.js)") {
+
+    Container(adServer, "Ad Server", "C++, Go", "Принимает HTTP-запросы, определяет пользователя, подбирает кандидатов в рекламу")
+
+    Container(auctionEngine, "Auction Engine", "C++", "Взвешивание ставок, бизнес-правила, расчёт победителя аукциона")
+
+    Container(deliveryService, "Delivery Service", "Node.js", "Формирует HTML/JS-разметку баннера и HTTP-ответ")
+
+    Container(statsService, "Statistics Service", "Python", "Запись кликов и показов")
+
+    Container(financialService, "Financial Service", "Go", "Списание средств, выставление счетов, управление балансами")
+
+    Container(analyticsService, "Analytics Service", "Python", "Аналитические SQL-запросы по production-БД")
+
+    Container(adCabinet, "Advertiser Dashboard", "Node.js + JavaScript", "Web UI: управление кампаниями, отчётность")
+}
+
+ContainerDb(postgres, "PostgreSQL", "PostgreSQL (одна инстанция)", "Единая БД: кампании, ставки, события, финансы, аналитика")
+
+Rel(dspPartner, adServer, "Bid-requests / responses", "HTTPS / OpenRTB")
+Rel(endUser, deliveryService, "Просмотр рекламы и клики", "HTTPS")
+Rel(advertiser, adCabinet, "Управляет кампаниями и бюджетами", "HTTPS")
+Rel(adCabinet, paymentGateway, "Пополнение бюджета", "HTTPS / REST")
+
+Rel(adServer, auctionEngine, "Передаёт кандидатов", "Internal Call")
+Rel(auctionEngine, deliveryService, "Передаёт победителя аукциона", "Internal Call")
+Rel(deliveryService, statsService, "Регистрирует показы/клики", "Internal Call")
+Rel(adCabinet, financialService, "Управление финансами", "Internal Call")
+Rel(adCabinet, analyticsService, "Запросы аналитики", "Internal Call")
+
+Rel(auctionEngine, postgres, "Читает ставки и кампании", "JDBC / Sync")
+Rel(statsService, postgres, "Прямая запись событий", "JDBC / Direct Write")
+Rel(financialService, postgres, "Транзакции и балансы", "JDBC")
+Rel(analyticsService, postgres, "Тяжёлые аналитические запросы", "JDBC")
+Rel(adCabinet, postgres, "CRUD-операции", "JDBC")
+Rel(adServer, postgres, "Чтение данных для таргетинга", "JDBC")
+
+note right of auctionEngine
+  **⚠ Критический bottleneck**
+  Синхронные вызовы к БД
+  в hot path (SLA ≤ 100 мс)
+end note
+
+note right of postgres
+  **⚠ Single Point of Failure**
+  Одна инстанция, нет HA
+  Нет read-replicas
+  OLTP + аналитика конкурируют
+end note
+
+note bottom of statsService
+  **⚠ write bottleneck**
+  Прямая запись без буферизации / очередей
+  Конкуренция за ресурсы БД
+end note
+
+note bottom of analyticsService
+  **⚠ Блокировки и рост latency**
+  Heavy queries напрямую на production-БД
+end note
+
+@enduml

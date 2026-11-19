@@ -1,0 +1,48 @@
+@startuml
+title AdScale TO-BE: потоки данных
+
+skinparam componentStyle rectangle
+
+queue "Kafka" as K {
+  [rtb.bid-events] as BE
+  [rtb.impressions] as IM
+  [rtb.clicks] as CL
+  [campaign.changed] as CC
+  [budget.updated] as BU
+}
+
+component "Bidding Service" as B
+component "Campaign Service" as C
+component "Finance Service" as F
+component "Stats Ingest" as I
+component "Billing consumer" as BL
+component "Analytics (ClickHouse)" as AN
+database "PostgreSQL\nCampaign\n(master+replica)" as PGC
+database "PostgreSQL\nFinance\n(sync replica)" as PGF
+database "Redis Cluster\n(кеш)" as R
+database "ClickHouse\n(события, вьюхи)" as CH
+
+C --> PGC : CRUD
+C --> CC : изменения кампаний
+CC --> B : обновление кеша
+B --> R : чтение кандидатов,\nLua-списание бюджета
+F --> PGF : транзакции
+F --> BU : budget.updated
+BU --> B : остаток бюджета
+B --> BE : исход аукциона
+I --> IM
+I --> CL
+BE --> BL : списания\n(идемпотентно)
+IM --> BL
+CL --> BL
+BE --> AN : загрузка
+IM --> AN
+CL --> AN
+AN --> CH : материализованные\nотчёты
+
+note bottom of CH
+  RPO/RTO: см. failover.md
+  Бэкапы: pgBackRest PITR,
+  сегменты CH в S3
+end note
+@enduml
