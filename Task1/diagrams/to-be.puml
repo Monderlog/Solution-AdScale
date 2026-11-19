@@ -1,54 +1,80 @@
 @startuml
-!include C4_Container.puml
-
-LAYOUT_WITH_LEGEND()
-LAYOUT_LEFT_RIGHT()
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontSize 12
+skinparam ArrowColor #444444
+skinparam ArrowFontSize 10
+skinparam rectangle {
+  BackgroundColor #438DD5
+  FontColor #FFFFFF
+  BorderColor #3C7FC0
+  RoundCorner 8
+}
+skinparam database {
+  BackgroundColor #08427B
+  FontColor #FFFFFF
+  BorderColor #073B6F
+}
+skinparam actor {
+  BackgroundColor #08427B
+  BorderColor #073B6F
+}
 
 title C4 Container Diagram: AdScale (TO-BE, через год)
 
-Person(advertiser, "Рекламодатель", "Кампании, бюджеты, отчёты")
-Person_Ext(endUser, "Пользователь сайта/приложения", "Видит рекламу, кликает")
-System_Ext(dspPartner, "DSP-партнёры", "Bid-requests по OpenRTB")
-System_Ext(paymentGateway, "Платёжный шлюз", "Пополнение бюджетов")
+actor "Рекламодатель\nКампании, бюджеты, отчёты" as advertiser
+actor "Пользователь сайта/приложения\nВидит рекламу, кликает" as endUser
+rectangle "DSP-партнёры\nBid-requests по OpenRTB" as dspPartner #B3B3B3
+rectangle "Платёжный шлюз\nПополнение бюджетов" as paymentGateway #B3B3B3
 
-Container(gateway, "API Gateway", "Envoy/Kong", "Единый вход: аутентификация DSP, rate limiting, маршрутизация, circuit breaker")
+rectangle "API Gateway\n[Envoy]\nЕдиный вход: аутентификация DSP,\nrate limiting, маршрутизация, circuit breaker" as gateway
 
-System_Boundary(services, "Микросервисы (Kubernetes, 2 региона)") {
-    Container(bidding, "Bidding Service", "Go", "OpenRTB: кандидаты, аукцион, bid-response. Без синхронной БД")
-    Container(campaign, "Campaign Service", "Go", "CRUD кампаний, бюджетов, ставок; публикует изменения")
-    Container(delivery, "Delivery Service", "Node.js", "HTML/JS баннера")
-    Container(ingest, "Stats Ingest", "Go", "Приём показов/кликов, запись в Kafka")
-    Container(analytics, "Analytics Service", "Go + ClickHouse", "Отчёты по материализованным вьюхам")
-    Container(finance, "Finance Service", "Go", "Списания, счета, балансы; идемпотентные операции")
-    Container(dashboard, "Dashboard", "Node.js", "UI рекламодателя")
+rectangle "Микросервисы (Kubernetes, 2 региона)" as services {
+  rectangle "Bidding Service\n[Go]\nOpenRTB: кандидаты, аукцион, bid-response.\nБез синхронной БД" as bidding
+  rectangle "Campaign Service\n[Go]\nCRUD кампаний, бюджетов, ставок;\nпубликует изменения" as campaign
+  rectangle "Delivery Service\n[Node.js]\nHTML/JS баннера" as delivery
+  rectangle "Stats Ingest\n[Go]\nПриём показов/кликов, запись в Kafka" as ingest
+  rectangle "Analytics Service\n[Go + ClickHouse]\nОтчёты по материализованным вьюхам" as analytics
+  rectangle "Finance Service\n[Go]\nСписания, счета, балансы;\nидемпотентные операции" as finance
+  rectangle "Dashboard\n[Node.js]\nUI рекламодателя" as dashboard
 }
 
-ContainerDb(redis, "Redis Cluster", "Redis", "Кеш кампаний, таргетинга, бюджетов для Bidding")
-Container(kafka, "Kafka", "Apache Kafka", "rtb.impressions, rtb.clicks, rtb.bid-events, campaign.changed")
-ContainerDb(pgCampaign, "PostgreSQL (Campaign)", "PostgreSQL + replica", "Кампании, ставки, таргетинг")
-ContainerDb(pgFinance, "PostgreSQL (Finance)", "PostgreSQL + sync replica", "Транзакции, балансы, счета")
-ContainerDb(clickhouse, "ClickHouse", "ClickHouse cluster", "События показов/кликов, отчётные вьюхи")
+rectangle "Kafka\n[Apache Kafka]\nrtb.impressions, rtb.clicks,\nrtb.bid-events, campaign.changed" as kafka #686868
 
-Rel(dspPartner, gateway, "Bid-requests / responses", "HTTPS / OpenRTB")
-Rel(gateway, bidding, "Ставки", "gRPC")
-Rel(gateway, dashboard, "Вход кабинета", "HTTPS")
-Rel(advertiser, dashboard, "Управление кампаниями", "HTTPS")
-Rel(bidding, redis, "Кандидаты, бюджеты", "in <1 мс")
-Rel(bidding, kafka, "rtb.bid-events (win/loss)", "async")
-Rel(bidding, delivery, "Победитель", "gRPC")
-Rel(endUser, delivery, "Просмотр и клики", "HTTPS")
-Rel(endUser, ingest, "Показы и клики", "HTTPS")
-Rel(ingest, kafka, "impressions, clicks", "async")
-Rel(campaign, pgCampaign, "CRUD", "SQL")
-Rel(campaign, kafka, "campaign.changed", "async")
-Rel(kafka, redis, "Кеш кампаний", "consumer")
-Rel(kafka, finance, "Списания", "consumer")
-Rel(kafka, clickhouse, "Stats Loader", "consumer")
-Rel(analytics, clickhouse, "Отчёты", "SQL")
-Rel(dashboard, campaign, "Кампании", "REST/gRPC")
-Rel(dashboard, analytics, "Отчётность", "REST")
-Rel(dashboard, finance, "Балансы", "REST")
-Rel(finance, pgFinance, "Транзакции", "SQL")
-Rel(finance, paymentGateway, "Пополнения", "HTTPS / REST")
+database "Redis Cluster\n[Redis]\nКеш кампаний, таргетинга,\nбюджетов для Bidding" as redis
+database "PostgreSQL (Campaign)\n[PostgreSQL + replica]\nКампании, ставки, таргетинг" as pgCampaign
+database "PostgreSQL (Finance)\n[PostgreSQL + sync replica]\nТранзакции, балансы, счета" as pgFinance
+database "ClickHouse\n[ClickHouse cluster]\nСобытия показов/кликов,\nотчётные вьюхи" as clickhouse
+
+dspPartner --> gateway : Bid-requests / responses\nHTTPS / OpenRTB
+gateway --> bidding : Ставки\ngRPC
+gateway --> dashboard : Вход кабинета\nHTTPS
+advertiser --> dashboard : Управление кампаниями\nHTTPS
+bidding --> redis : Кандидаты, бюджеты\nin <1 мс
+bidding --> kafka : rtb.bid-events (win/loss)\nasync
+bidding --> delivery : Победитель\ngRPC
+endUser --> delivery : Просмотр и клики\nHTTPS
+endUser --> ingest : Показы и клики\nHTTPS
+ingest --> kafka : impressions, clicks\nasync
+campaign --> pgCampaign : CRUD\nSQL
+campaign --> kafka : campaign.changed\nasync
+kafka --> redis : Кеш кампаний\nconsumer
+kafka --> finance : Списания\nconsumer
+kafka --> clickhouse : Stats Loader\nconsumer
+analytics --> clickhouse : Отчёты\nSQL
+dashboard --> campaign : Кампании\nREST/gRPC
+dashboard --> analytics : Отчётность\nREST
+dashboard --> finance : Балансы\nREST
+finance --> pgFinance : Транзакции\nSQL
+finance --> paymentGateway : Пополнения\nHTTPS / REST
+
+legend right
+|= целевое состояние |= |
+| Пик | 50 000 RPS через год |
+| P95 | ≤ 100 мс, маршрут новой DSP ≤ 80 мс |
+| SLA | 99.9% |
+| База | своя у каждого сервиса |
+| События | Kafka, Avro + Schema Registry |
+endlegend
 
 @enduml

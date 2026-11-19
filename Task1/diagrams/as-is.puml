@@ -1,53 +1,62 @@
 @startuml
-!include C4_Container.puml
-
-LAYOUT_WITH_LEGEND()
-LAYOUT_TOP_DOWN()
+top to bottom direction
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontSize 12
+skinparam ArrowColor #444444
+skinparam ArrowFontSize 10
+skinparam rectangle {
+  BackgroundColor #438DD5
+  FontColor #FFFFFF
+  BorderColor #3C7FC0
+  RoundCorner 8
+}
+skinparam database {
+  BackgroundColor #08427B
+  FontColor #FFFFFF
+  BorderColor #073B6F
+}
+skinparam actor {
+  BackgroundColor #08427B
+  BorderColor #073B6F
+}
 
 title C4 Container Diagram: AdScale (AS-IS)\n15 000 RPS (пик), P95 110-120 мс при требовании ≤100 мс, деградации в часы пик
 
-Person(advertiser, "Рекламодатель", "Управляет кампаниями, бюджетами и ставками через личный кабинет")
-Person_Ext(endUser, "Пользователь сайта/приложения", "Просматривает рекламу, кликает по баннерам")
+actor "Рекламодатель\nУправляет кампаниями,\nбюджетами и ставками" as advertiser
+actor "Пользователь сайта/приложения\nПросматривает рекламу,\nкликает по баннерам" as endUser
 
-System_Ext(dspPartner, "DSP-партнёр", "Отправляет bid-requests, получает bid-responses по OpenRTB")
-System_Ext(paymentGateway, "Платёжный шлюз", "Обработка пополнения рекламных бюджетов")
+rectangle "DSP-партнёр\nОтправляет bid-requests,\nполучает bid-responses по OpenRTB" as dspPartner #B3B3B3
+rectangle "Платёжный шлюз\nПополнение рекламных бюджетов" as paymentGateway #B3B3B3
 
-System_Boundary(monolith, "AdScale Monolith (C++ / Go / Python / Node.js)") {
-
-    Container(adServer, "Ad Server", "C++, Go", "Принимает HTTP-запросы, определяет пользователя, подбирает кандидатов в рекламу")
-
-    Container(auctionEngine, "Auction Engine", "C++", "Взвешивание ставок, бизнес-правила, расчёт победителя аукциона")
-
-    Container(deliveryService, "Delivery Service", "Node.js", "Формирует HTML/JS-разметку баннера и HTTP-ответ")
-
-    Container(statsService, "Statistics Service", "Python", "Запись кликов и показов")
-
-    Container(financialService, "Financial Service", "Go", "Списание средств, выставление счетов, управление балансами")
-
-    Container(analyticsService, "Analytics Service", "Python", "Аналитические SQL-запросы по production-БД")
-
-    Container(adCabinet, "Advertiser Dashboard", "Node.js + JavaScript", "Web UI: управление кампаниями, отчётность")
+rectangle "AdScale Monolith (C++ / Go / Python / Node.js)" as monolith {
+  rectangle "Ad Server\n[C++, Go]\nПринимает HTTP-запросы, определяет\nпользователя, подбирает кандидатов" as adServer
+  rectangle "Auction Engine\n[C++]\nВзвешивание ставок, бизнес-правила,\nрасчёт победителя" as auctionEngine
+  rectangle "Delivery Service\n[Node.js]\nHTML/JS-разметка баннера\nи HTTP-ответ" as deliveryService
+  rectangle "Statistics Service\n[Python]\nЗапись кликов и показов" as statsService
+  rectangle "Financial Service\n[Go]\nСписания, счета, балансы" as financialService
+  rectangle "Analytics Service\n[Python]\nАналитические SQL-запросы\nпо production-БД" as analyticsService
+  rectangle "Advertiser Dashboard\n[Node.js + JavaScript]\nWeb UI: кампании, отчётность" as adCabinet
 }
 
-ContainerDb(postgres, "PostgreSQL", "PostgreSQL (одна инстанция)", "Единая БД: кампании, ставки, события, финансы, аналитика")
+database "PostgreSQL\n(одна инстанция)\nЕдиная БД: кампании, ставки,\nсобытия, финансы, аналитика" as postgres
 
-Rel(dspPartner, adServer, "Bid-requests / responses", "HTTPS / OpenRTB")
-Rel(endUser, deliveryService, "Просмотр рекламы и клики", "HTTPS")
-Rel(advertiser, adCabinet, "Управляет кампаниями и бюджетами", "HTTPS")
-Rel(adCabinet, paymentGateway, "Пополнение бюджета", "HTTPS / REST")
+dspPartner --> adServer : Bid-requests / responses\nHTTPS / OpenRTB
+endUser --> deliveryService : Просмотр рекламы и клики\nHTTPS
+advertiser --> adCabinet : Кампании и бюджеты\nHTTPS
+adCabinet --> paymentGateway : Пополнение бюджета\nHTTPS / REST
 
-Rel(adServer, auctionEngine, "Передаёт кандидатов", "Internal Call")
-Rel(auctionEngine, deliveryService, "Передаёт победителя аукциона", "Internal Call")
-Rel(deliveryService, statsService, "Регистрирует показы/клики", "Internal Call")
-Rel(adCabinet, financialService, "Управление финансами", "Internal Call")
-Rel(adCabinet, analyticsService, "Запросы аналитики", "Internal Call")
+adServer --> auctionEngine : Кандидаты\nInternal Call
+auctionEngine --> deliveryService : Победитель аукциона\nInternal Call
+deliveryService --> statsService : Показы/клики\nInternal Call
+adCabinet --> financialService : Финансы\nInternal Call
+adCabinet --> analyticsService : Запросы аналитики\nInternal Call
 
-Rel(auctionEngine, postgres, "Читает ставки и кампании", "JDBC / Sync")
-Rel(statsService, postgres, "Прямая запись событий", "JDBC / Direct Write")
-Rel(financialService, postgres, "Транзакции и балансы", "JDBC")
-Rel(analyticsService, postgres, "Тяжёлые аналитические запросы", "JDBC")
-Rel(adCabinet, postgres, "CRUD-операции", "JDBC")
-Rel(adServer, postgres, "Чтение данных для таргетинга", "JDBC")
+auctionEngine --> postgres : Читает ставки и кампании\nJDBC / Sync
+statsService --> postgres : Прямая запись событий\nJDBC / Direct Write
+financialService --> postgres : Транзакции и балансы\nJDBC
+analyticsService --> postgres : Тяжёлые аналитические запросы\nJDBC
+adCabinet --> postgres : CRUD-операции\nJDBC
+adServer --> postgres : Чтение таргетинга\nJDBC
 
 note right of auctionEngine
   **⚠ Критический bottleneck**
@@ -72,5 +81,14 @@ note bottom of analyticsService
   **⚠ Блокировки и рост latency**
   Heavy queries напрямую на production-БД
 end note
+
+legend right
+|= текущее состояние |= |
+| Пик | 15 000 RPS |
+| P95 | 110-120 мс при SLA ≤ 100 мс |
+| Кеширование | отсутствует |
+| Очереди | отсутствуют |
+| Деплой | вручную, без контейнеризации |
+endlegend
 
 @enduml
