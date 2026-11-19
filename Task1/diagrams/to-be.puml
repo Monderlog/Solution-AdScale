@@ -1,0 +1,54 @@
+@startuml
+!include C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_LEFT_RIGHT()
+
+title C4 Container Diagram: AdScale (TO-BE, через год)
+
+Person(advertiser, "Рекламодатель", "Кампании, бюджеты, отчёты")
+Person_Ext(endUser, "Пользователь сайта/приложения", "Видит рекламу, кликает")
+System_Ext(dspPartner, "DSP-партнёры", "Bid-requests по OpenRTB")
+System_Ext(paymentGateway, "Платёжный шлюз", "Пополнение бюджетов")
+
+Container(gateway, "API Gateway", "Envoy/Kong", "Единый вход: аутентификация DSP, rate limiting, маршрутизация, circuit breaker")
+
+System_Boundary(services, "Микросервисы (Kubernetes, 2 региона)") {
+    Container(bidding, "Bidding Service", "Go", "OpenRTB: кандидаты, аукцион, bid-response. Без синхронной БД")
+    Container(campaign, "Campaign Service", "Go", "CRUD кампаний, бюджетов, ставок; публикует изменения")
+    Container(delivery, "Delivery Service", "Node.js", "HTML/JS баннера")
+    Container(ingest, "Stats Ingest", "Go", "Приём показов/кликов, запись в Kafka")
+    Container(analytics, "Analytics Service", "Go + ClickHouse", "Отчёты по материализованным вьюхам")
+    Container(finance, "Finance Service", "Go", "Списания, счета, балансы; идемпотентные операции")
+    Container(dashboard, "Dashboard", "Node.js", "UI рекламодателя")
+}
+
+ContainerDb(redis, "Redis Cluster", "Redis", "Кеш кампаний, таргетинга, бюджетов для Bidding")
+Container(kafka, "Kafka", "Apache Kafka", "rtb.impressions, rtb.clicks, rtb.bid-events, campaign.changed")
+ContainerDb(pgCampaign, "PostgreSQL (Campaign)", "PostgreSQL + replica", "Кампании, ставки, таргетинг")
+ContainerDb(pgFinance, "PostgreSQL (Finance)", "PostgreSQL + sync replica", "Транзакции, балансы, счета")
+ContainerDb(clickhouse, "ClickHouse", "ClickHouse cluster", "События показов/кликов, отчётные вьюхи")
+
+Rel(dspPartner, gateway, "Bid-requests / responses", "HTTPS / OpenRTB")
+Rel(gateway, bidding, "Ставки", "gRPC")
+Rel(gateway, dashboard, "Вход кабинета", "HTTPS")
+Rel(advertiser, dashboard, "Управление кампаниями", "HTTPS")
+Rel(bidding, redis, "Кандидаты, бюджеты", "in <1 мс")
+Rel(bidding, kafka, "rtb.bid-events (win/loss)", "async")
+Rel(bidding, delivery, "Победитель", "gRPC")
+Rel(endUser, delivery, "Просмотр и клики", "HTTPS")
+Rel(endUser, ingest, "Показы и клики", "HTTPS")
+Rel(ingest, kafka, "impressions, clicks", "async")
+Rel(campaign, pgCampaign, "CRUD", "SQL")
+Rel(campaign, kafka, "campaign.changed", "async")
+Rel(kafka, redis, "Кеш кампаний", "consumer")
+Rel(kafka, finance, "Списания", "consumer")
+Rel(kafka, clickhouse, "Stats Loader", "consumer")
+Rel(analytics, clickhouse, "Отчёты", "SQL")
+Rel(dashboard, campaign, "Кампании", "REST/gRPC")
+Rel(dashboard, analytics, "Отчётность", "REST")
+Rel(dashboard, finance, "Балансы", "REST")
+Rel(finance, pgFinance, "Транзакции", "SQL")
+Rel(finance, paymentGateway, "Пополнения", "HTTPS / REST")
+
+@enduml
