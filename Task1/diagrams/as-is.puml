@@ -10,6 +10,18 @@ skinparam rectangle {
   BorderColor #3C7FC0
   RoundCorner 8
 }
+skinparam rectangle<<boundary>> {
+  BackgroundColor #F8F8F8
+  FontColor #333333
+  BorderColor #666666
+  BorderStyle solid
+  RoundCorner 0
+}
+skinparam rectangle<<ext>> {
+  BackgroundColor #B3B3B3
+  FontColor #000000
+  BorderColor #8F8F8F
+}
 skinparam database {
   BackgroundColor #08427B
   FontColor #FFFFFF
@@ -25,10 +37,10 @@ title C4 Container Diagram: AdScale (AS-IS)\n15 000 RPS (пик), P95 110-120 м
 actor "Рекламодатель\nУправляет кампаниями,\nбюджетами и ставками" as advertiser
 actor "Пользователь сайта/приложения\nПросматривает рекламу,\nкликает по баннерам" as endUser
 
-rectangle "DSP-партнёр\nОтправляет bid-requests,\nполучает bid-responses по OpenRTB" as dspPartner #B3B3B3
-rectangle "Платёжный шлюз\nПополнение рекламных бюджетов" as paymentGateway #B3B3B3
+rectangle "DSP-партнёр\nОтправляет bid-requests,\nполучает bid-responses по OpenRTB" as dspPartner <<ext>>
+rectangle "Платёжный шлюз\nПополнение рекламных бюджетов" as paymentGateway <<ext>>
 
-rectangle "AdScale Monolith (C++ / Go / Python / Node.js)" as monolith {
+rectangle "AdScale Monolith (C++ / Go / Python / Node.js)" as monolith <<boundary>> {
   rectangle "Ad Server\n[C++, Go]\nПринимает HTTP-запросы, определяет\nпользователя, подбирает кандидатов" as adServer
   rectangle "Auction Engine\n[C++]\nВзвешивание ставок, бизнес-правила,\nрасчёт победителя" as auctionEngine
   rectangle "Delivery Service\n[Node.js]\nHTML/JS-разметка баннера\nи HTTP-ответ" as deliveryService
