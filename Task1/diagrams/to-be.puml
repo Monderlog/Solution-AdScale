@@ -10,6 +10,18 @@ skinparam rectangle {
   BorderColor #3C7FC0
   RoundCorner 8
 }
+skinparam rectangle<<boundary>> {
+  BackgroundColor #F8F8F8
+  FontColor #333333
+  BorderColor #666666
+  BorderStyle solid
+  RoundCorner 0
+}
+skinparam rectangle<<ext>> {
+  BackgroundColor #B3B3B3
+  FontColor #000000
+  BorderColor #8F8F8F
+}
 skinparam database {
   BackgroundColor #08427B
   FontColor #FFFFFF
@@ -24,12 +36,12 @@ title C4 Container Diagram: AdScale (TO-BE, через год)
 
 actor "Рекламодатель\nКампании, бюджеты, отчёты" as advertiser
 actor "Пользователь сайта/приложения\nВидит рекламу, кликает" as endUser
-rectangle "DSP-партнёры\nBid-requests по OpenRTB" as dspPartner #B3B3B3
-rectangle "Платёжный шлюз\nПополнение бюджетов" as paymentGateway #B3B3B3
+rectangle "DSP-партнёры\nBid-requests по OpenRTB" as dspPartner <<ext>>
+rectangle "Платёжный шлюз\nПополнение бюджетов" as paymentGateway <<ext>>
 
 rectangle "API Gateway\n[Envoy]\nЕдиный вход: аутентификация DSP,\nrate limiting, маршрутизация, circuit breaker" as gateway
 
-rectangle "Микросервисы (Kubernetes, 2 региона)" as services {
+rectangle "Микросервисы (Kubernetes, 2 региона)" as services <<boundary>> {
   rectangle "Bidding Service\n[Go]\nOpenRTB: кандидаты, аукцион, bid-response.\nБез синхронной БД" as bidding
   rectangle "Campaign Service\n[Go]\nCRUD кампаний, бюджетов, ставок;\nпубликует изменения" as campaign
   rectangle "Delivery Service\n[Node.js]\nHTML/JS баннера" as delivery
